@@ -94,7 +94,7 @@ class Zombie:
         self.x -= distance * math.cos(self.dir)
         self.y -= distance * math.sin(self.dir)
 
-    def move_to(self, r=0.5):
+    def move_to(self, r = 0.5):
         self.state = 'Walk'
         self.move_slightly_to(self.tx, self.ty)
         if self.distance_less_than(self.tx, self.ty, self.x, self.y, r):
@@ -143,8 +143,8 @@ class Zombie:
         c1 = Condition('소년이 더 많은 공을 가지고 있는가?', self.ball_count_less_than)
         a3 = Action('도망', self.move_from_boy)
         root = avoid_boy = Sequence('소년에게서 도망', c1, a3)
-        a3 = Action('접근', self.move_to_boy)
-        root = chase_or_avoid = Selector('추적 또는 도망', avoid_boy, a3)
+        a4 = Action('접근', self.move_to_boy)
+        root = chase_or_avoid = Selector('추적 또는 도망', avoid_boy, a4)
 
         c2 = Condition('소년이 근처에 있는가?', self.is_boy_nearby, 7)
         root = chase_boy = Sequence('소년을 향해', c2, chase_or_avoid)
