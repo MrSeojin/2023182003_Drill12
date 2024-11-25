@@ -45,7 +45,12 @@ class Zombie:
         self.state = 'Idle'
         self.ball_count = 0
 
+        self.tx, self.ty = 0,0
         self.build_behavior_tree()
+
+        self.patrol_locations = [(43, 274), (1118, 274), (1050, 494), (575, 804), (235, 991), (575, 804), (1050, 494),
+                                 (1118, 274)]
+        self.loc_no = 0
 
 
     def get_bb(self):
@@ -54,7 +59,7 @@ class Zombie:
 
     def update(self):
         self.frame = (self.frame + FRAMES_PER_ACTION * ACTION_PER_TIME * game_framework.frame_time) % FRAMES_PER_ACTION
-        # fill here
+        self.bt.run()
 
 
     def draw(self):
@@ -64,6 +69,7 @@ class Zombie:
             Zombie.images[self.state][int(self.frame)].draw(self.x, self.y, 100, 100)
         self.font.draw(self.x - 10, self.y + 60, f'{self.ball_count}', (0, 0, 255))
         draw_rectangle(*self.get_bb())
+        Zombie.marker_image.draw(self.tx - 10, self.ty-10)
 
     def handle_event(self, event):
         pass
@@ -72,30 +78,77 @@ class Zombie:
         if group == 'zombie:ball':
             self.ball_count += 1
 
-
-    def set_target_location(self, x=None, y=None):
-        pass
-
     def distance_less_than(self, x1, y1, x2, y2, r):
-        pass
+        distance2 = (x1 - x2) ** 2 + (y1 - y2) ** 2
+        return distance2 < (PIXEL_PER_METER * r) ** 2
 
     def move_slightly_to(self, tx, ty):
-        pass
+        self.dir = math.atan2(ty - self.y, tx - self.x)
+        distance = RUN_SPEED_PPS * game_framework.frame_time
+        self.x += distance * math.cos(self.dir)
+        self.y += distance * math.sin(self.dir)
+
+    def move_away_from(self, tx, ty):
+        self.dir = math.atan2(ty - self.y, tx - self.x)
+        distance = RUN_SPEED_PPS * game_framework.frame_time
+        self.x -= distance * math.cos(self.dir)
+        self.y -= distance * math.sin(self.dir)
 
     def move_to(self, r=0.5):
-        pass
+        self.state = 'Walk'
+        self.move_slightly_to(self.tx, self.ty)
+        if self.distance_less_than(self.tx, self.ty, self.x, self.y, r):
+            return BehaviorTree.SUCCESS
+        else:
+            return BehaviorTree.RUNNING
 
-    def set_random_location(self):
-        pass
+    def is_boy_nearby(self, r = 0.5):
+        if self.distance_less_than(play_mode.boy.x, play_mode.boy.y, self.x, self.y, r):
+            return BehaviorTree.SUCCESS
+        else:
+            return BehaviorTree.FAIL
 
-    def is_boy_nearby(self, distance):
-        pass
+    def ball_count_less_than(self):
+        if play_mode.boy.ball_count > self.ball_count:
+            return BehaviorTree.SUCCESS
+        else:
+            return BehaviorTree.FAIL
 
-    def move_to_boy(self, r=0.5):
-        pass
+    def move_to_boy(self, r = 0.5):
+        self.state = 'Walk'
+        self.move_slightly_to(play_mode.boy.x, play_mode.boy.y)
+        if self.distance_less_than(play_mode.boy.x, play_mode.boy.y, self.x, self.y, r):
+            return BehaviorTree.SUCCESS
+        else:
+            return BehaviorTree.RUNNING
+
+    def move_from_boy(self, r=0.5):
+        self.state = 'Walk'
+        self.move_away_from(play_mode.boy.x, play_mode.boy.y)
+        if self.ball_count_less_than():
+            return BehaviorTree.SUCCESS
+        else:
+            return BehaviorTree.RUNNING
 
     def get_patrol_location(self):
-        pass
+        self.tx, self.ty = self.patrol_locations[self.loc_no]
+        self.loc_no = (self.loc_no + 1) % len(self.patrol_locations)
+        return BehaviorTree.SUCCESS
 
     def build_behavior_tree(self):
-        pass
+        a1 = Action('순찰 위치 가져오기', self.get_patrol_location)
+        a2 = Action('Move to', self.move_to)
+        root = patrol = Sequence('추적 또는 배회', a1, a2)
+
+        c1 = Condition('소년이 더 많은 공을 가지고 있는가?', self.ball_count_less_than)
+        a3 = Action('도망', self.move_from_boy)
+        root = avoid_boy = Sequence('소년에게서 도망', c1, a3)
+        a3 = Action('접근', self.move_to_boy)
+        root = chase_or_avoid = Selector('추적 또는 도망', avoid_boy, a3)
+
+        c2 = Condition('소년이 근처에 있는가?', self.is_boy_nearby, 7)
+        root = chase_boy = Sequence('소년을 향해', c2, chase_or_avoid)
+
+        root = close_or_far = Selector('추적 또는 배회', chase_boy, patrol)
+
+        self.bt = BehaviorTree(root)
